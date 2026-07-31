@@ -2,7 +2,8 @@
 
 ###Set Working Directory, Install/Load Packages
 ```{r}
-setwd("/Users/Jacob/Documents/Ch_3_Materials")
+setwd("/Users/Jacob/Documents/Ch_3_Materials/Larval_Tuna_GAMs")
+getwd() #"/Users/Jacob/Documents/Ch_3_Materials/Larval_Tuna_GAMs"
 
 ###installing packages if needed:
 #install.packages("corrplot")
@@ -11,6 +12,7 @@ setwd("/Users/Jacob/Documents/Ch_3_Materials")
 #install.packages("car")
 #install.packages("pROC")
 #install.packages("lunar")
+#install.packages("caret")
 
 ###library packages
 library(ggplot2)
@@ -23,6 +25,7 @@ library(gratia)
 library(car)
 library(pROC)
 library(lunar)
+library(caret)
 ```
 
 ###Bring in data for individual larvae (freq. of occurrence, length, etc.)
@@ -67,7 +70,6 @@ ggplot(data = filter(individual_data, genus == "Thunnus"), aes(x = Total.Length.
   theme_minimal()
 #dev.off()
 
-
 #Combine
 freq_data <- individual_data %>%
   filter(genus %in% c("Katsuwonus", "Thunnus")) %>%
@@ -96,7 +98,6 @@ table(individual_data$genus[!is.na(individual_data$Total.Length..mm.)])
 ###Reading in and making sure data are correct class
 ```{r}
 station_data <- read.csv("Fish_plankton_tuna.csv")
-
 str(station_data)
 
 #making variables the correct type
@@ -152,9 +153,9 @@ station_data$hour[station_data$hour == 24] <- 0
 
 #See number of NAs (this is from Caroline):
 na_table_tidyverse <- station_data %>%
-  # Count the NAs for every column
+  #Count the NAs for every column
   dplyr::summarise(across(everything(), ~sum(is.na(.)))) %>%
-  # Convert the row of counts into a long-format table
+  #Convert the row of counts into a long-format table
   pivot_longer(everything(), names_to = "Column Name", values_to = "NA Count")
 
 print(na_table_tidyverse)
@@ -243,7 +244,6 @@ ggplot(density_summary_nonzero,aes(x = Cruise, y = mean_density, fill = genus)) 
 
 ###Testing for significant differences between cruises
 ```{r}
-# Create the long-format data with ONLY positive densities (same filtering as your summary)
 long_data_nonzero <- station_data %>%
   filter(!is.na(Skipjack.Density) | !is.na(Thunnus.Density)) %>%
   pivot_longer(
@@ -262,47 +262,26 @@ long_data_nonzero <- station_data %>%
   ) %>%
   filter(!is.na(genus), density_per_1000m3 > 0)
 
-# ====================== NON-PARAMETRIC TESTS (recommended) ======================
-# Larval densities are almost always right-skewed → Kruskal-Wallis is safest
-
-# Katsuwonus
+#Kruskal-Wallis 
+#Katsuwonus
 katsu_density_data_long <- long_data_nonzero %>% filter(genus == "Katsuwonus")
+kw_katsu <- kruskal.test(density_per_1000m3 ~ Cruise, data = katsu_density_data_long)
+print(kw_katsu)
 
-if (n_distinct(katsu_density_data_long$Cruise) > 1) {
-  kw_katsu <- kruskal.test(density_per_1000m3 ~ Cruise, data = katsu_density_data_long)
-  cat("\n=== Kruskal-Wallis Test: Katsuwonus across years ===\n")
-  print(kw_katsu)
-  
-  # Post-hoc pairwise comparisons (only if overall test is significant)
-  if (kw_katsu$p.value < 0.05) {
-    cat("\nPost-hoc pairwise Wilcoxon tests (Bonferroni-adjusted):\n")
-    print(pairwise.wilcox.test(katsu_density_data_long$density_per_1000m3, 
+print(pairwise.wilcox.test(katsu_density_data_long$density_per_1000m3, 
                                katsu_density_data_long$Cruise, 
                                p.adjust.method = "bonferroni", 
                                exact = FALSE))
-  }
-} else {
-  cat("Only one cruise for Katsuwonus – no test possible.\n")
-}
 
-# Thunnus
+#Thunnus
 thun_density_data_long <- long_data_nonzero %>% filter(genus == "Thunnus")
-
-if (n_distinct(thun_density_data_long$Cruise) > 1) {
-  kw_thun <- kruskal.test(density_per_1000m3 ~ Cruise, data = thun_density_data_long)
-  cat("\n=== Kruskal-Wallis Test: Thunnus across years ===\n")
-  print(kw_thun)
+kw_thun <- kruskal.test(density_per_1000m3 ~ Cruise, data = thun_density_data_long)
+print(kw_thun)
   
-  if (kw_thun$p.value < 0.05) {
-    cat("\nPost-hoc pairwise Wilcoxon tests (Bonferroni-adjusted):\n")
-    print(pairwise.wilcox.test(thun_density_data_long$density_per_1000m3, 
+print(pairwise.wilcox.test(thun_density_data_long$density_per_1000m3, 
                                thun_density_data_long$Cruise, 
                                p.adjust.method = "bonferroni", 
                                exact = FALSE))
-  }
-} else {
-  cat("Only one cruise for Thunnus – no test possible.\n")
-}
 ```
 
 ###Distribution of variables of interest
@@ -364,7 +343,6 @@ corrplot::corrplot(cor(input_vars, method="spearman", use = "complete.obs"))
 ```
 
 ##Trying a GAM for presence/absence based off environmental parameters, and another for non-zero observations incorporating biological parameters
-
 ###Presence/Absence 
 ```{r}
 #Skipjack - presence/absence (therefore using binomial family with log link)
@@ -385,25 +363,6 @@ gam_skj_pa_binom <- gam(Skipjack_pa ~
                         data = station_data,
                         method = "REML")
 
-
-glm_skj_pa_binom <- gam(Skipjack_pa ~
-                        Thunnus_pa #incorporating Thunnus presence as a linear parametric predictor (not smooth)
-                      + factor(Year)
-                      + non.tuna.density #significant
-                      + SSS #significant
-                      + Zpl.Density..ml.m3. #significant
-                      + day_since_newmoon
-                      #+ LatDec, LonDec #significant
-                      + Chla
-                      + hour
-                      + SST...C.
-                      + ADCP_velo,
-                        #select = TRUE,
-                        family = binomial(link = "logit"),
-                        data = station_data,
-                        method = "REML")
-
-
 #Checking performance
 summary(gam_skj_pa_binom) 
 plot(gam_skj_pa_binom)
@@ -415,9 +374,26 @@ concurvity(gam_skj_pa_binom)
 vif(gam_skj_pa_binom)
 acf(residuals(gam_skj_pa_binom))
 
+#GLM Version for comparison
+glm_skj_pa_binom <- gam(Skipjack_pa ~
+                        Thunnus_pa #incorporating Thunnus presence as a linear parametric predictor (not smooth)
+                      + factor(Year)
+                      + non.tuna.density 
+                      + SSS 
+                      + Zpl.Density..ml.m3. 
+                      + day_since_newmoon
+                      #+ LatDec, LonDec #this throws an error in the GLM
+                      + Chla
+                      + hour
+                      + SST...C.
+                      + ADCP_velo,
+                        family = binomial(link = "logit"),
+                        data = station_data,
+                        method = "REML")
+
 summary(glm_skj_pa_binom) 
 #plot(glm_skj_pa_binom)
-#glm.check(glm_skj_pa_binom)
+#gam.check(glm_skj_pa_binom)
 AIC(glm_skj_pa_binom) 
 gratia::draw(glm_skj_pa_binom)
 anova(glm_skj_pa_binom)
@@ -440,7 +416,7 @@ sig_smooths_skj_pa <- c("s(SSS)", "s(non.tuna.density)", "s(Zpl.Density..ml.m3.)
 gratia::draw(gam_skj_pa_binom, select = sig_smooths_skj_pa, parametric = TRUE, ncol = 2)
 #dev.off()
 
-#-------------- 5-fold CV
+#5-fold CV
 set.seed(8)
 k <- 5
 n <- nrow(station_data)
@@ -467,6 +443,7 @@ for (i in 1:k) {
                         family = binomial(link = "logit"),
                         data = train_df,
                         method = "REML")
+  
   #Predict on held-out fold
   cv_probs[folds == i] <- predict(gam_fit,
                                   newdata = test_df,
@@ -475,7 +452,6 @@ for (i in 1:k) {
                                 newdata = test_df, 
                                 type = "link")
 }
-
 observed <- station_data$Skipjack_pa
 
 #Basic summary
@@ -544,25 +520,6 @@ gam_thun_pa_binom <- gam(Thunnus_pa ~
                         data = station_data,
                         method = "REML")
 
-gam_thun_pa_binom <- gam(Thunnus_pa ~
-                        Skipjack_pa #incorporating Skipjack presence as a linear parametric predictor (not smooth)
-                      + factor(Year)
-                      + s(SST...C., bs = "ts") #significant
-                      + s(Chla, bs = "ts") #significant
-                      + s(non.tuna.density, bs = "ts") #significant
-                      + s(Zpl.Density..ml.m3., bs = "ts") #significant
-                      
-                      
-                      + s(LatDec, LonDec, bs = "gp", k = 4) #significant
-                      + s(day_since_newmoon, bs = "cc")
-                      
-                      + s(ADCP_velo, bs = "ts")
-                      + s(hour, bs = "cc")
-                      + s(SSS, bs = "ts"),
-                        select = TRUE,
-                        family = binomial(link = "logit"),
-                        data = station_data,
-                        method = "REML")
 #Checking performance
 summary(gam_thun_pa_binom) 
 plot(gam_thun_pa_binom)
@@ -573,6 +530,34 @@ anova(gam_thun_pa_binom)
 concurvity(gam_thun_pa_binom)
 vif(gam_thun_pa_binom)
 acf(residuals(gam_thun_pa_binom))
+
+#GLM Version for comparison
+glm_thun_pa_binom <- gam(Thunnus_pa ~
+                        Skipjack_pa #incorporating Skipjack presence as a linear parametric predictor (not smooth)
+                      + factor(Year)
+                      + Zpl.Density..ml.m3. #significant
+                      + non.tuna.density #significant
+                      + SST...C. #significant
+                      #+ LatDec, LonDec #significant
+                      + day_since_newmoon
+                      + Chla #significant
+                      + ADCP_velo
+                      + hour
+                      + SSS,
+                        family = binomial(link = "logit"),
+                        data = station_data,
+                        method = "REML")
+
+#Checking performance
+summary(glm_thun_pa_binom) 
+#plot(glm_thun_pa_binom)
+gam.check(glm_thun_pa_binom)
+AIC(glm_thun_pa_binom) 
+#gratia::draw(glm_thun_pa_binom)
+anova(glm_thun_pa_binom)
+#concurvity(glm_thun_pa_binom)
+vif(glm_thun_pa_binom)
+acf(residuals(glm_thun_pa_binom))
 
 #Plotting final GAMs (one full and one with just selected significant terms)
 #Full
@@ -623,7 +608,6 @@ for (i in 1:k) {
                                 newdata = test_df, 
                                 type = "link")
 }
-
 observed <- station_data$Thunnus_pa
 
 #Basic summary
@@ -673,7 +657,6 @@ rug(cv_probs[station_data$Skipjack_pa == 1],
 #dev.off()
 ```
 
-
 ##Density-based analysis of Skipjack
 ```{r}
 #Skipjack - density (therefore using binomial family with log link)
@@ -694,26 +677,6 @@ gam_skj_dens_tw <- gam(Skipjack.Density ~
                         data = station_data,
                         method = "REML")
 
-gam_skj_dens_tw <- gam(Skipjack.Density ~
-                        factor(Year)
-                      + s(SSS, bs = "ts") #significant
-                      + s(ADCP_velo, bs = "ts") #significant
-                      + s(non.tuna.density, bs = "ts") #significant
-                      + s(Zpl.Density..ml.m3., bs = "ts") #significant
-                      + s(Thunnus.Density, bs ="ts") #significant
-                      
-                      + s(LatDec, LonDec, bs = "gp", k = 4) #significant
-                      + s(day_since_newmoon, bs = "cc")
-                      
-                      + s(SST...C., bs = "ts")
-                      
-                      + s(Chla, bs = "ts") #marginal
-                      
-                      + s(hour, bs = "cc"), #significant
-                        select = TRUE,
-                        family = tw(link = "log"),
-                        data = station_data,
-                        method = "REML")
 #Checking performance
 summary(gam_skj_dens_tw) 
 plot(gam_skj_dens_tw)
@@ -725,7 +688,33 @@ concurvity(gam_skj_dens_tw)
 vif(gam_skj_dens_tw)
 acf(residuals(gam_skj_dens_tw))
 
-#Note: Chl-a was insignificant and had high concurvity with explanatory oceanographic parameters, so was removed which increased explanatory power and decreased AIC. I've left it for now, but if you get agreement from Caroline/Ethan later on this is where to start
+#GLM Version for comparison
+glm_skj_dens_tw <- gam(Skipjack.Density ~
+                        factor(Year)
+                      + Thunnus.Density #significant
+                      + Zpl.Density..ml.m3. #significant
+                      #+ LatDec, LonDec #significant
+                      + day_since_newmoon
+                      + ADCP_velo #significant
+                      + SST...C.
+                      + non.tuna.density #significant
+                      + Chla #marginal
+                      + SSS #significant
+                      + hour, #significant
+                        family = binomial(link = "log"),
+                        data = station_data,
+                        method = "REML")
+
+#Checking performance
+summary(glm_skj_dens_tw) 
+#plot(glm_skj_dens_tw)
+gam.check(glm_skj_dens_tw)
+AIC(glm_skj_dens_tw) 
+gratia::draw(glm_skj_dens_tw)
+anova(glm_skj_dens_tw)
+#concurvity(glm_skj_dens_tw)
+vif(glm_skj_dens_tw)
+acf(residuals(glm_skj_dens_tw))
 
 #Plotting final GAMs (one full and one with just selected significant terms)
 #Full
@@ -804,20 +793,6 @@ rug(cv_preds[station_data$Skipjack.Density == 0], side = 1, col = "gray40", lwd 
 rug(cv_preds[station_data$Skipjack.Density >  0], side = 3, col = "gray20", lwd = 0.8)
 #dev.off()
 ```
-#FLAG: Delete this
-```{r}
-summary(cv_preds)                  # look for Inf, NA, very large numbers
-any(is.infinite(cv_preds))         # TRUE → problem confirmed
-which(is.infinite(cv_preds))       # which rows/fold had Inf predictions?
-
-max(cv_preds, na.rm = TRUE)        # if this errors → NAs are present
-range(cv_preds, finite = TRUE)     # ignores Inf/NA
-
-# Also check observed data for sanity
-summary(station_data$Skipjack.Density)
-max(station_data$Skipjack.Density, na.rm = TRUE)
-max(station_data$Thunnus.Density)
-```
 
 ###Density-based analysis of Thunnus
 ```{r}
@@ -838,27 +813,6 @@ gam_thun_dens_tw <- gam(Thunnus.Density ~
                         data = station_data,
                         method = "REML")
 
-
-gam_thun_dens_tw <- gam(Thunnus.Density ~
-                        factor(Year)
-                      + s(SST...C., bs = "ts") #significant
-                      + s(Chla, bs = "ts") #significant
-                      + s(non.tuna.density, bs = "ts") #significant
-                      + s(Zpl.Density..ml.m3., bs = "ts") #significant
-                      + s(Skipjack.Density, bs = "ts") #significant
-                      
-                      
-                      
-                      
-                      + s(LatDec, LonDec, bs = "gp", k = 4) #significant
-                      + s(SSS, bs = "ts")
-                      + s(hour, bs = "cc")
-                      + s(day_since_newmoon, bs = "cc") #marginal
-                      + s(ADCP_velo, bs = "ts"),
-                        select = TRUE,
-                        family = tw(link = "log"),
-                        data = station_data,
-                        method = "REML")
 #Checking performance
 summary(gam_thun_dens_tw) 
 plot(gam_thun_dens_tw)
@@ -869,6 +823,34 @@ anova(gam_thun_dens_tw)
 concurvity(gam_thun_dens_tw)
 vif(gam_thun_dens_tw)
 acf(residuals(gam_thun_dens_tw))
+
+#GLM Version for comparison
+glm_thun_dens_tw <- gam(Thunnus.Density ~
+                        factor(Year)
+                      + Skipjack.Density #significant
+                      + Zpl.Density..ml.m3. #significant
+                      + non.tuna.density #significant
+                      + SST...C. #significant
+                      + Chla #significant
+                      #+ LatDec, LonDec #significant
+                      + SSS
+                      + hour
+                      + day_since_newmoon #marginal
+                      + ADCP_velo,
+                        family = binomial(link = "log"),
+                        data = station_data,
+                        method = "REML")
+
+#Checking performance
+summary(glm_thun_dens_tw) 
+#plot(glm_thun_dens_tw)
+gam.check(glm_thun_dens_tw)
+AIC(glm_thun_dens_tw) 
+#gratia::draw(glm_thun_dens_tw)
+anova(glm_thun_dens_tw)
+#concurvity(glm_thun_dens_tw)
+vif(glm_thun_dens_tw)
+acf(residuals(glm_thun_dens_tw))
 
 #Plotting final GAMs (one full and one with just selected significant terms)
 #Full
@@ -944,4 +926,143 @@ lines(newdata$cv_preds, fit_mean, col = "black", lwd = 2.6)
 rug(cv_preds[station_data$Skipjack.Density == 0], side = 1, col = "gray40", lwd = 0.8)
 rug(cv_preds[station_data$Skipjack.Density >  0], side = 3, col = "gray20", lwd = 0.8)
 #dev.off()
+```
+
+##Attempting Random Forest and Boosted Regression Trees for Model Comparisons (w/ Ethan)
+
+###Skipjack
+```{r}
+gam_skj_dens_tw <- gam(Skipjack.Density ~
+                        factor(Year)
+                      + s(Thunnus.Density, bs ="ts") #significant
+                      + s(Zpl.Density..ml.m3., bs = "ts") #significant
+                      + s(LatDec, LonDec, bs = "gp", k = 4) #significant
+                      + s(day_since_newmoon, bs = "cc")
+                      + s(ADCP_velo, bs = "ts") #significant
+                      + s(SST...C., bs = "ts")
+                      + s(non.tuna.density, bs = "ts") #significant
+                      + s(Chla, bs = "ts") #marginal
+                      + s(SSS, bs = "ts") #significant
+                      + s(hour, bs = "cc"), #significant
+                        select = TRUE,
+                        family = tw(link = "log"),
+                        data = station_data,
+                        method = "REML")
+
+form_gam <- formula(Skipjack.Density ~
+                        s(Thunnus.Density, bs ="ts") #significant
+                      + s(Zpl.Density..ml.m3., bs = "ts") #significant
+                      + s(ADCP_velo, bs = "ts") #significant
+                      + s(SST...C., bs = "ts")
+                      + s(non.tuna.density, bs = "ts") #significant
+                      + s(Chla, bs = "ts") #marginal
+                      + s(SSS, bs = "ts") #significant
+                    )
+```
+
+###This model contains several phenomenological descriptors, including the year factor and the latitude/longitude. In principle if we had identified all the relevant physical variables these others would be redundant.
+```{r}
+v_key_var <- c("Thunnus.Density","Zpl.Density..ml.m3.","ADCP_velo","SST...C.","non.tuna.density","Chla","SSS")
+# v_key_var <- c("Thunnus.Density","Zpl.Density..ml.m3.","ADCP_velo","non.tuna.density","SSS")
+
+k_fold <- 5
+
+set.seed(2025)
+n <- nrow(station_data)
+folds <- sample(rep(1:k, length.out = n))
+rmse_preds_rf  <- numeric(k)
+rmse_preds_glm  <- numeric(k)
+
+for (i in 1:k) {
+  cat("Fold", i, "of", k, "... ")
+  train_df <- station_data[folds != i, c("Skipjack.Density",v_key_var), drop = TRUE] %>% filter(complete.cases(.))
+  test_df  <- station_data[folds == i, c("Skipjack.Density",v_key_var), drop = TRUE] %>% filter(complete.cases(.))
+  # gam_fit <- train()
+  
+  glm_fit <- train(Skipjack.Density ~ .,
+                   data = train_df,
+                   method = "glm")
+  
+  # gam_fit <- train(form_gam,
+  #                  data = train_df,
+  #                  method = "gam")
+  
+  rf_fit <- train(Skipjack.Density ~ .,
+                   data = train_df,
+                   method = "rf")
+  # glm_pred <- predict()
+  
+  glm_pred <- predict(glm_fit,
+                                  newdata = test_df,
+                                  type = "raw")
+  
+  
+  rf_pred <- predict(rf_fit,
+                                  newdata = test_df,
+                                  type = "raw")
+  
+  
+  rmse_preds_glm[i] <- sqrt(mean( (glm_pred - test_df[,1])^2 ) )
+  rmse_preds_rf[i] <- sqrt(mean( (rf_pred - test_df[,1])^2 ) )
+}
+
+rmse_preds_glm
+rmse_preds_rf
+```
+
+###Thunnus
+```{r}
+# v_key_var <- c("Skipjack.Density","Zpl.Density..ml.m3.","ADCP_velo","SST...C.","non.tuna.density","Chla","SSS")
+v_key_var <- c("Skipjack.Density","Zpl.Density..ml.m3.","SST...C.","non.tuna.density","Chla")
+# v_key_var <- c("Thunnus.Density","Zpl.Density..ml.m3.","ADCP_velo","non.tuna.density","SSS")
+
+k_fold <- 5
+
+# set.seed(2025)
+n <- nrow(station_data)
+folds <- sample(rep(1:k, length.out = n))
+rmse_preds_rf  <- numeric(k)
+rmse_preds_glm  <- numeric(k)
+
+for (i in 1:k) {
+  cat("Fold", i, "of", k, "... ")
+  norm_df <- station_data[,c("Thunnus.Density",v_key_var)] %>%
+    mutate(across(all_of(v_key_var),~ (. - mean(.,na.rm=T))/sd(.,na.rm=T) )) %>%
+    mutate(Thunnus.Density = sqrt(Thunnus.Density))
+  train_df <- norm_df[folds != i, c("Thunnus.Density",v_key_var), drop = TRUE] %>% 
+    filter(complete.cases(.))
+  test_df  <- norm_df[folds == i, c("Thunnus.Density",v_key_var), drop = TRUE] %>% 
+    filter(complete.cases(.))
+  # gam_fit <- train()
+  
+  glm_fit <- train(Thunnus.Density ~ .,
+                   data = train_df,
+                   method = "glm")
+  
+  # gam_fit <- train(form_gam,
+  #                  data = train_df,
+  #                  method = "gam")
+  
+  # rf_fit <- train(Thunnus.Density ~ .,
+  #                  data = train_df,
+  #                  method = "rf")
+  
+  rf_fit <- train(Thunnus.Density ~ .,
+                   data = train_df,
+                   method = "gaussprRadial")
+
+  glm_pred <- predict(glm_fit,
+                                  newdata = test_df,
+                                  type = "raw")
+  
+  rf_pred <- predict(rf_fit,
+                                  newdata = test_df,
+                                  type = "raw")
+  
+  rmse_preds_glm[i] <- sqrt(mean( (glm_pred - test_df[,1])^2 ) )
+  rmse_preds_rf[i] <- sqrt(mean( (rf_pred - test_df[,1])^2 ) )
+}
+
+rmse_preds_glm
+rmse_preds_rf
 ```
