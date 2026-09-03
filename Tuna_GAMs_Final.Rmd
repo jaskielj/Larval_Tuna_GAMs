@@ -1066,3 +1066,140 @@ for (i in 1:k) {
 rmse_preds_glm
 rmse_preds_rf
 ```
+
+
+### Plotting number of each taxon in feature types
+```{r}
+### Starting by making a new column where each station has a classification as "front", "eddy", "both", or "neither"
+station_data$SST...C.
+station_data <- station_data %>%
+  mutate(
+    feature = case_when(
+      ADCP_velo > 0.3125 & SSS > 35.25 & SST...C. > 29.7 & Chla < 9 ~ "both",
+      ADCP_velo > 0.3125 & SSS > 35.25 ~ "front",
+      SST...C. > 29.7 & Chla < 9 ~ "eddy",
+      TRUE ~ "neither"
+    )
+  )
+
+larvae_feature_data <- station_data %>%
+  group_by(feature) %>%
+  summarize(
+    Thunnus = sum(Thunnus, na.rm = TRUE),
+    Skipjack = sum(Skipjack, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = c(Thunnus, Skipjack),
+    names_to = "taxon",
+    values_to = "count"
+  )
+
+ggplot(larvae_feature_data, aes(x = feature, y = count, fill = taxon)) +
+  geom_col(position = "dodge") +
+  labs(
+    x = "Feature type",
+    y = "Number of individuals",
+    fill = "Taxon"
+  ) +
+  theme_classic()
+
+station_data_long <- station_data %>%
+  pivot_longer(
+    cols = c(Thunnus, Skipjack),
+    names_to = "taxon",
+    values_to = "count"
+  )
+
+ggplot(station_data_long, aes(x = feature, y = count, fill = taxon)) +
+  geom_boxplot() +
+  labs(
+    x = "Feature type",
+    y = "Count per row",
+    fill = "Taxon"
+  ) +
+  theme_classic()
+
+avg_data <- station_data %>%
+  group_by(feature) %>%
+  summarize(
+    avg_Thunnus = mean(Thunnus, na.rm = TRUE),
+    avg_Skipjack = mean(Skipjack, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = c(avg_Thunnus, avg_Skipjack),
+    names_to = "taxon",
+    values_to = "average_count"
+  ) %>%
+  mutate(
+    taxon = dplyr::recode(
+      taxon,
+      avg_Thunnus = "Thunnus",
+      avg_Skipjack = "Skipjack"
+    )
+  )
+
+ggplot(avg_data, aes(x = feature, y = average_count, fill = taxon)) +
+  geom_col(position = "dodge") +
+  labs(
+    x = "Feature type",
+    y = "Average larvae per row",
+    fill = "Taxon"
+  ) +
+  theme_classic()
+
+density_avg_data <- station_data %>%
+  pivot_longer(
+    cols = c(Skipjack.Density, Thunnus.Density),
+    names_to = "taxon",
+    values_to = "density"
+  ) %>%
+  group_by(feature, taxon) %>%
+  summarize(
+    average_density = mean(density, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(density_avg_data, aes(x = feature, y = average_density, fill = taxon)) +
+  geom_col(position = "dodge") +
+  labs(
+    x = "Feature type",
+    y = "Average density",
+    fill = "Taxon"
+  ) +
+  theme_classic()
+
+
+density_avg_data2 <- station_data %>%
+  filter(Skipjack.Density > 0 | Thunnus.Density > 0) %>%
+  pivot_longer(
+    cols = c(Skipjack.Density, Thunnus.Density),
+    names_to = "taxon",
+    values_to = "density"
+  ) %>%
+  mutate(
+    taxon = case_when(
+      taxon == "Skipjack.Density" ~ "Skipjack",
+      taxon == "Thunnus.Density" ~ "Thunnus",
+      TRUE ~ taxon
+    )
+  ) %>%
+  group_by(feature, taxon) %>%
+  summarize(
+    average_density = mean(density, na.rm = TRUE),
+    se_density = sd(density, na.rm = TRUE) / sqrt(sum(!is.na(density))),
+    n = sum(!is.na(density)),
+    .groups = "drop"
+  )
+
+ggplot(density_avg_data2, aes(x = feature, y = average_density, fill = taxon)) +
+  geom_col(position = "dodge") +
+  labs(
+    x = "Feature type",
+    y = "Average density",
+    fill = "Taxon"
+  ) +
+  theme_classic()
+```
+
