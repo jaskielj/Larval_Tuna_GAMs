@@ -1075,9 +1075,9 @@ station_data$SST...C.
 station_data <- station_data %>%
   mutate(
     feature = case_when(
-      ADCP_velo > 0.3125 & SSS > 35.25 & SST...C. > 29.7 & Chla < 9 ~ "both",
-      ADCP_velo > 0.3125 & SSS > 35.25 ~ "front",
-      SST...C. > 29.7 & Chla < 9 ~ "eddy",
+      ADCP_velo > 0.5 & SSS > 35.25 & SST...C. > 29.5 & Chla < 5 ~ "both",
+      ADCP_velo > 0.5 & SSS > 35.25 ~ "front",
+      SST...C. > 29.5 & Chla < 5 ~ "eddy",
       TRUE ~ "neither"
     )
   )
@@ -1201,5 +1201,6 @@ ggplot(density_avg_data2, aes(x = feature, y = average_density, fill = taxon)) +
     fill = "Taxon"
   ) +
   theme_classic()
+
 ```
 
