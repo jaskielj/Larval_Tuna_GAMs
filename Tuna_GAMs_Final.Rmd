@@ -225,6 +225,7 @@ density_summary_nonzero <- station_data %>%
     .groups = "drop") %>%
   mutate(Cruise = factor(Cruise))
 
+#density_summary_nonzero$
 #png("nonzero_tuna_density_by_cruise.png", units = "in", width = 6, height = 5, res = 1200)
 ggplot(density_summary_nonzero,aes(x = Cruise, y = mean_density, fill = genus)) +
   geom_col(position = position_dodge(width = 0.75), width = 0.70, color = "black", linewidth = 0.4) +
@@ -241,6 +242,63 @@ ggplot(density_summary_nonzero,aes(x = Cruise, y = mean_density, fill = genus)) 
   theme_minimal()
 #dev.off()
 ```
+
+### Boxplot Version
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+density_long <- station_data %>%
+  pivot_longer(cols = c(Skipjack.Density, Thunnus.Density), names_to = "genus", values_to = "density_m3") %>%
+  mutate(genus = case_when(genus == "Skipjack.Density" ~ "Katsuwonus", genus == "Thunnus.Density"  ~ "Thunnus", TRUE ~ NA_character_),
+         genus = factor(genus, levels = c("Katsuwonus", "Thunnus")), 
+         Cruise = factor(Cruise),
+         density_per_1000m3 = density_m3 * 1000) %>%
+  filter(!is.na(genus), !is.na(density_per_1000m3))
+
+density_long_nonzero <- density_long %>%
+  filter(!is.na(density_per_1000m3), density_per_1000m3 > 0)
+
+nonzero_means <- density_long_nonzero %>%
+  group_by(Cruise, genus) %>%
+  summarise(mean_density = mean(density_per_1000m3, na.rm = TRUE), .groups = "drop")
+
+#FLAG: fix formatting of this and make sure the whole doc has the same consistent organization! 
+
+#png("nonzero_density_by_cruise_boxplot_final.png", units = "in", width = 6, height = 5, res = 1200)
+ggplot(density_long_nonzero, aes(x = Cruise, y = density_per_1000m3, fill = genus)) +
+  geom_boxplot(
+    aes(group = interaction(Cruise, genus)),
+    position = position_dodge(width = 0.75),
+    width = 0.70,
+    color = "black",
+    linewidth = 0.4,
+    outlier.shape = 21
+  ) +
+  geom_point(
+    data = nonzero_means,
+    aes(x = Cruise, y = mean_density, group = genus),
+    position = position_dodge(width = 0.75),
+    color = "black",
+    size = 2,
+    inherit.aes = FALSE
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Katsuwonus" = "darkslategray2",
+      "Thunnus" = "goldenrod1"
+    )
+  ) +
+      scale_y_continuous(limits = c(0, 12)) +
+ labs(
+    x = "Cruise",
+    y = "Mean density (larvae/1,000 m³)",
+    fill = "Genus") +
+  theme_minimal(base_size = 14)
+#dev.off()
+```
+
 
 ###Testing for significant differences between cruises
 ```{r}
@@ -929,6 +987,8 @@ rug(cv_probs[station_data$Skipjack_pa == 1],
 #dev.off()
 ```
 
+
+
 ##Attempting Random Forest and Boosted Regression Trees for Model Comparisons (w/ Ethan)
 ###Skipjack
 ```{r}
@@ -1074,10 +1134,10 @@ rmse_preds_rf
 station_data <- station_data %>%
   mutate(
     feature = case_when(
-      ADCP_velo > 0.375 & SSS > 35.25 & SST...C. > 29.5 & Chla < 7 ~ "Both",
+      #ADCP_velo > 0.375 & SSS > 35.25 & SST...C. > 29.5 & Chla < 7 ~ "Both",
       ADCP_velo > 0.375 & SSS > 35.25 ~ "Front",
       SST...C. > 29.5 & Chla < 7 ~ "Eddy",
-      TRUE ~ "Neither"
+      TRUE ~ "Oceanic"
     )
   )
 
@@ -1109,4 +1169,6 @@ ggplot(density_boxplot_data, aes(x = feature, y = density, fill = Genus)) +
   scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", "Thunnus" = "goldenrod1")) +
   theme_classic()
 #dev.off()
+
+table(density_boxplot_data$feature)
 ```
