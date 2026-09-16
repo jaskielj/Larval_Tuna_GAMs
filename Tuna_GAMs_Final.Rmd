@@ -319,7 +319,7 @@ long_data_nonzero <- station_data %>%
     ),
     genus = factor(genus, levels = c("Katsuwonus", "Thunnus")),
     density_per_1000m3 = density_m3 * 1000,
-    Cruise = factor(Cruise)          # make sure Cruise is a factor (your "years")
+    Cruise = factor(Cruise) 
   ) %>%
   filter(!is.na(genus), density_per_1000m3 > 0)
 
@@ -670,8 +670,8 @@ ci_upper <- fit_mean + 1.96 * pred$se.fit
 
 #png("Thunnus_density_calibration_clipped2.png", units = "in", width = 6, height = 4, res = 1200)
 plot(0, 0, type = "n",
-     xlim = c(0, 2), ylim = c(0, 3),
-     xlab = "Predicted Mean Density", ylab = "",
+     xlim = c(0, 20), ylim = c(0, 30),
+     xlab = "Predicted Mean Density", ylab = "Observed Mean Density",
      las = 1, bty = "l")
 abline(0, 1, col = "gray50", lty = 2, lwd = 1.6)
 polygon(c(newdata$cv_preds, rev(newdata$cv_preds)),
@@ -1264,6 +1264,8 @@ na_table_tidyverse <- station_data_old %>%
   pivot_longer(everything(), names_to = "Column Name", values_to = "NA Count")
 
 print(na_table_tidyverse)
+
+
 #Skipjack - density (therefore using binomial family with log link)
 gam_skj_dens_tw <- gam(Skipjack.Density ~
                         factor(Year)
