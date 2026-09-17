@@ -482,7 +482,7 @@ gratia::draw(gam_skj_dens_tw, select = sig_smooths_katsu_dens, parametric = TRUE
 #dev.off()
 
 #-------------- 5-fold CV
-set.seed(505) 
+set.seed(54507845) #505 #54507845
 k <- 5
 n <- nrow(station_data)
 folds <- sample(rep(1:k, length.out = n))
@@ -522,7 +522,7 @@ calib_gam <- gam(station_data$Skipjack.Density.1000m3 ~ s(cv_preds, bs = "ts"),
 summary(calib_gam)
 
 #Predict smooth + uncertainty
-newdata <- data.frame(cv_preds = seq(0, 20, length.out = 477)) #FLAG: determine how much we want to show
+newdata <- data.frame(cv_preds = seq(0, 120, length.out = 477)) #FLAG: determine how much we want to show
 pred <- predict(calib_gam, newdata = newdata, type = "response", se.fit = TRUE)
 
 fit_mean <- pred$fit
@@ -531,8 +531,8 @@ ci_upper <- fit_mean + 1.96 * pred$se.fit
 
 #png("Katsu_density_calibration_clipped2.png", units = "in", width = 6, height = 4, res = 1200)
 plot(0, 0, type = "n",
-     xlim = c(0, 5), ylim = c(0, 6.5),
-     xlab = "Predicted Mean Density", ylab = "Observed Mean Density",
+     xlim = c(0, 40), ylim = c(0, 80),
+     xlab = "Predicted Density", ylab = "Observed Density",
      las = 1, bty = "l")
 abline(0, 1, col = "gray50", lty = 2, lwd = 1.6)
 polygon(c(newdata$cv_preds, rev(newdata$cv_preds)),
@@ -623,7 +623,7 @@ gratia::draw(gam_thun_dens_tw, select = sig_smooths_thun_dens, parametric = TRUE
 #dev.off()
 
 #-------------- 5-fold CV
-set.seed(18) 
+set.seed(31) #31
 k <- 5
 n <- nrow(station_data)
 folds <- sample(rep(1:k, length.out = n))
@@ -661,7 +661,7 @@ calib_gam <- gam(station_data$Thunnus.Density.1000m3 ~ s(cv_preds, bs = "ts"),
 summary(calib_gam)
 
 #predict smooth + uncertainty
-newdata <- data.frame(cv_preds = seq(0, 20, length.out = 477))
+newdata <- data.frame(cv_preds = seq(0, 40, length.out = 477))
 #newdata <- data.frame(cv_preds = seq(0, max(cv_preds)*1.05, length.out = 301))
 pred <- predict(calib_gam, newdata = newdata, type = "response", se.fit = TRUE)
 fit_mean <- pred$fit
@@ -670,7 +670,7 @@ ci_upper <- fit_mean + 1.96 * pred$se.fit
 
 #png("Thunnus_density_calibration_clipped2.png", units = "in", width = 6, height = 4, res = 1200)
 plot(0, 0, type = "n",
-     xlim = c(0, 20), ylim = c(0, 30),
+     xlim = c(0, 10), ylim = c(0, 22),
      xlab = "Predicted Mean Density", ylab = "Observed Mean Density",
      las = 1, bty = "l")
 abline(0, 1, col = "gray50", lty = 2, lwd = 1.6)
@@ -1173,17 +1173,51 @@ density_boxplot_data <- station_data %>%
     )
   )
 
+feature_genus_means <- density_boxplot_data %>%
+  group_by(feature, Genus) %>%
+  summarise(
+    mean_density = mean(density, na.rm = TRUE),
+    .groups = "drop"
+  )
+
 #png("density_feature_nonzero.png", units = "in", width = 6, height = 5, res = 1200)
 ggplot(density_boxplot_data, aes(x = feature, y = density, fill = Genus)) +
-  geom_boxplot(position = position_dodge(width = 0.8)) +
+  geom_boxplot(
+    aes(group = interaction(feature, Genus)),
+    position = position_dodge(width = 0.75),
+    width = 0.70,
+    color = "black",
+    linewidth = 0.4,
+    outlier.shape = 21
+  ) +
+  geom_point(
+    data = feature_genus_means,
+    aes(x = feature, y = mean_density, group = Genus),
+    position = position_dodge(width = 0.75),
+    color = "black",
+    size = 2,
+    inherit.aes = FALSE
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Katsuwonus" = "darkslategray2",
+      "Thunnus" = "goldenrod1"
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "Katsuwonus" = "darkslategray2",
+      "Thunnus" = "goldenrod1"
+    )
+  ) +
+  scale_y_continuous(limits = c(0, 15)) +
   labs(
     x = "Feature type",
-    y = "Larval Density",
-    fill = "Genus"
+    y = "Larval Density (ind./1,000 m³)",
+    fill = "Genus",
+    color = "Genus"
   ) +
-  coord_cartesian(ylim = c(0, 15)) +
-  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", "Thunnus" = "goldenrod1")) +
-  theme_classic()
+  theme_minimal(base_size = 14)
 #dev.off()
 
 table(density_boxplot_data$feature)
