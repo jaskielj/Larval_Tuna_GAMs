@@ -1221,7 +1221,79 @@ ggplot(density_boxplot_data, aes(x = feature, y = density, fill = Genus)) +
 #dev.off()
 
 table(density_boxplot_data$feature)
+
+
+### Tweedie GLM
+#install.packages("glmmTMB")
+library(glmmTMB)
+
+m_tweedie <- glmmTMB(
+  density ~ Genus * feature,
+  data = density_boxplot_data,
+  family = tweedie(link = "log")
+)
+
+summary(m_tweedie)
+
+library(emmeans)
+
+emmeans(m_tweedie, ~ feature | Genus, type = "response")
+
+pairs(emmeans(m_tweedie, ~ feature | Genus, type = "response"), adjust = "tukey")
+
+### Testing that Tweedie GLM is adequately handling the zero inflation and unequal variance
+#install.packages("DHARMa")
+library(DHARMa)
+
+sim_tweedie <- simulateResiduals(m_tweedie, n = 1000)
+
+plot(sim_tweedie)
+
+testUniformity(sim_tweedie)
+testDispersion(sim_tweedie)
+testZeroInflation(sim_tweedie)
 ```
+
+
+
+```{r}
+library(multcomp)
+#install.packages("multcompView")
+library(multcompView)
+library(emmeans)
+
+emm <- emmeans(m_tweedie, ~ feature | Genus, type = "response")
+
+cld_results <- cld(
+  emm,
+  by = "Genus",
+  adjust = "tukey",
+  Letters = letters,
+  type = "response"
+)
+
+cld_results
+
+pairs(
+  emmeans(m_tweedie, ~ Genus | feature, type = "response"),
+  adjust = "tukey"
+)
+
+
+
+emm_all <- emmeans(m_tweedie, ~ Genus * feature, type = "response")
+
+cld_all <- cld(
+  emm_all,
+  adjust = "tukey",
+  Letters = letters,
+  type = "response"
+)
+
+cld_all
+```
+
+
 
 
 
