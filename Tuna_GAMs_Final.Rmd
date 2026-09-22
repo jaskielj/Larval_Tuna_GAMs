@@ -1,11 +1,11 @@
-##This is the analysis pipeline associated with "Modelling the influence of oceanographic conditions and zooplankton community structure on the distribution and abundance of larval tunas in the tropical central Pacific" by Jaskiel et al.
+##This is the analysis pipeline associated with "Modeling the influence of oceanographic conditions and zooplankton community structure on the distribution and abundance of larval tunas in the tropical central Pacific" by Jaskiel et al.
 
-###Set Working Directory, Install/Load Packages
+### Set Working Directory, Install/Load Packages
 ```{r}
 setwd("/Users/Jacob/Documents/Ch_3_Materials/Larval_Tuna_GAMs")
-getwd() #"/Users/Jacob/Documents/Ch_3_Materials/Larval_Tuna_GAMs"
+getwd() ### "/Users/Jacob/Documents/Ch_3_Materials/Larval_Tuna_GAMs"
 
-###installing packages if needed:
+### Installing packages if needed:
 #install.packages("corrplot")
 #install.packages("statmod")
 #install.packages("gratia")
@@ -13,8 +13,13 @@ getwd() #"/Users/Jacob/Documents/Ch_3_Materials/Larval_Tuna_GAMs"
 #install.packages("pROC")
 #install.packages("lunar")
 #install.packages("caret")
+#install.packages("glmmTMB")
+#install.packages("emmeans")
+#install.packages("DHARMa")
+#install.packages("multcomp")
+#install.packages("multcompView")
 
-###library packages
+### Library packages
 library(ggplot2)
 library(corrplot)
 library(mgcv)
@@ -26,14 +31,18 @@ library(car)
 library(pROC)
 library(lunar)
 library(caret)
+library(glmmTMB)
+library(emmeans)
+library(DHARMa)
+library(multcomp)
+library(multcompView)
 ```
 
-###Bring in data for individual larvae (freq. of occurrence, length, etc.)
+### Bring in data for individual larvae (freq. of occurrence, length, etc.)
 ```{r}
-individual_data_old <- read.csv("/Users/Jacob/Documents/Ch_3_Materials/all_PIPA_larvae.csv") #FLAG: remove
 individual_data <- read.csv("all_PIPA_larvae.csv")
 
-#make sure cruise # is a factor and lengths are numeric
+### Make sure cruise number is a factor and lengths are numeric
 individual_data <- individual_data %>%
   mutate(Cruise = as.factor(Cruise)) %>%
   mutate(Total.Length..mm. = as.numeric(Total.Length..mm.))
@@ -49,9 +58,9 @@ individual_data_station_summary <- individual_data %>%
   arrange(Station, genus)
 ```
 
-###Plot frequency of occurrence for 1mm length bins for both genera
+### Plot frequency of occurrence for 1mm length bins for both genera
 ```{r}
-#Katsuwonus percent frequency of occurrence per cruise
+### Katsuwonus percent frequency of occurrence per cruise
 #png("katsuwonus_length_freq_by_cruise.png", units = "in", width = 6, height = 4, res = 1200)
 ggplot(data = filter(individual_data, genus == "Katsuwonus"), aes(x = Total.Length..mm.)) +
   geom_histogram(binwidth = 1, boundary = 0, fill = "darkslategray2", color = "black", linewidth = 0.3, 
@@ -61,9 +70,9 @@ ggplot(data = filter(individual_data, genus == "Katsuwonus"), aes(x = Total.Leng
   theme_minimal()
 #dev.off()
 
-#Thunnus percent frequency of occurrence per cruise
+### Thunnus percent frequency of occurrence per cruise
 #png("thunnus_length_freq_by_cruise.png", units = "in", width = 6, height = 4, res = 1200)
-ggplot(data = filter(individual_data, genus == "Thunnus"), aes(x = Total.Length..mm.)) +
+ggplot(data = filter(individual_data, genus == "Thunnus"), aes(x = Total.Length..mm.)) + 
   geom_histogram(binwidth = 1, boundary = 0, fill = "goldenrod1", color = "black", linewidth = 0.3,
                  aes(y = after_stat(count / tapply(count, PANEL, sum)[PANEL] * 100))) +
   facet_wrap(~ Cruise, scales = "free_y", ncol = 3) +
@@ -71,10 +80,10 @@ ggplot(data = filter(individual_data, genus == "Thunnus"), aes(x = Total.Length.
   theme_minimal()
 #dev.off()
 
-#Combine
+### Combine
 freq_data <- individual_data %>%
   filter(genus %in% c("Katsuwonus", "Thunnus")) %>%
-  filter(!is.na(Total.Length..mm.)) %>%          # remove NA lengths
+  filter(!is.na(Total.Length..mm.)) %>%
   mutate(length_bin = floor(Total.Length..mm.)) %>%
   group_by(genus, Cruise, length_bin) %>%
   summarise(count = n(), .groups = "drop") %>%
@@ -84,11 +93,9 @@ freq_data <- individual_data %>%
 
 #png("combined_length_freq.png", units = "in", width = 6, height = 4, res = 1200)
 ggplot(freq_data, aes(x = length_bin + 0.5, y = pct, fill = genus)) +
-  geom_col(position = position_dodge2(width = 1, preserve = "single"),
-           color = "black", linewidth = 0.3, width = 1) +
+  geom_col(position = position_dodge2(width = 1, preserve = "single"), color = "black", linewidth = 0.3, width = 1) +
   facet_wrap(~ Cruise, scales = "free_y", ncol = 3) +
-  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2",
-                                "Thunnus"    = "goldenrod1")) +
+  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", "Thunnus" = "goldenrod1")) +
   labs(x = "Total Length (mm)", y = "Frequency (%)", fill = "Genus") +
   theme_minimal()
 #dev.off()
@@ -96,12 +103,12 @@ ggplot(freq_data, aes(x = length_bin + 0.5, y = pct, fill = genus)) +
 table(individual_data$genus[!is.na(individual_data$Total.Length..mm.)])
 ```
 
-###Reading in and making sure data are correct class
+### Reading in and making sure data are correct class
 ```{r}
 station_data <- read.csv("Fish_plankton_tuna.csv")
 str(station_data)
 
-#making variables the correct type
+### Making variables the correct class
 station_data$Jar.. <- as.factor(station_data$Jar..)
 station_data$Date <- as.Date(station_data$Date, format="%d-%b-%y")
 station_data$Cruise <- as.factor(station_data$Cruise)
@@ -121,15 +128,16 @@ station_data$Tow.Volume..m3. <- as.numeric(station_data$Tow.Volume..m3.)
 station_data$Zpl.Density..ml.m3. <- as.numeric(station_data$Zpl.Density..ml.m3.)
 station_data$Tuna.Density..ml.m3. <- as.numeric(station_data$Tuna.Density..ml.m3.)
 
-#The rest are numeric so let's just do this:
+### The rest are numeric so let's just do this:
 station_data[34:148] <- lapply(station_data[34:148], as.numeric)
 
-#let's look now
+### Let's look now
 str(station_data)
 
-#looks good, ecxept let's remove the one sample with a bunch of phytoplankton goop (S261-034-NT)
+### Looks good, ecxept let's remove the one sample with a bunch of phytoplankton goop (S261-034-NT)
 station_data <- station_data %>% filter(Jar.. != "S261-034-NT")
 
+###FLAG: Stopped editing formatting here 9/22/26 5pm
 #Make densities in ind./1000m^3
 station_data$Skipjack.Density.1000m3 <- station_data$Skipjack.Density * 1000
 station_data$Thunnus.Density.1000m3 <- station_data$Thunnus.Density * 1000
@@ -248,9 +256,7 @@ ggplot(density_summary_nonzero,aes(x = Cruise, y = mean_density, fill = genus)) 
 
 ### Boxplot Version
 ```{r}
-library(dplyr)
-library(tidyr)
-library(ggplot2)
+
 
 density_long <- station_data %>%
   pivot_longer(cols = c(Skipjack.Density, Thunnus.Density), names_to = "genus", values_to = "density_m3") %>%
@@ -1224,8 +1230,8 @@ table(density_boxplot_data$feature)
 
 
 ### Tweedie GLM
-#install.packages("glmmTMB")
-library(glmmTMB)
+
+
 
 m_tweedie <- glmmTMB(
   density ~ Genus * feature,
@@ -1235,15 +1241,15 @@ m_tweedie <- glmmTMB(
 
 summary(m_tweedie)
 
-library(emmeans)
+
 
 emmeans(m_tweedie, ~ feature | Genus, type = "response")
 
 pairs(emmeans(m_tweedie, ~ feature | Genus, type = "response"), adjust = "tukey")
 
 ### Testing that Tweedie GLM is adequately handling the zero inflation and unequal variance
-#install.packages("DHARMa")
-library(DHARMa)
+
+
 
 sim_tweedie <- simulateResiduals(m_tweedie, n = 1000)
 
@@ -1257,10 +1263,9 @@ testZeroInflation(sim_tweedie)
 
 
 ```{r}
-library(multcomp)
-#install.packages("multcompView")
-library(multcompView)
-library(emmeans)
+
+
+
 
 emm <- emmeans(m_tweedie, ~ feature | Genus, type = "response")
 
