@@ -1,4 +1,4 @@
-##This is the analysis pipeline associated with "Modeling the influence of oceanographic conditions and zooplankton community structure on the distribution and abundance of larval tunas in the tropical central Pacific" by Jaskiel et al.
+## This is the analysis pipeline associated with "Modeling the influence of oceanography and zooplankton dynamics on the abundance and distribution of larval tunas in the tropical central Pacific" by Jaskiel et al.
 
 ### Set Working Directory, Install/Load Packages
 ```{r}
@@ -62,26 +62,42 @@ individual_data_station_summary <- individual_data %>%
 ```{r}
 ### Katsuwonus percent frequency of occurrence per cruise
 #png("katsuwonus_length_freq_by_cruise.png", units = "in", width = 6, height = 4, res = 1200)
-ggplot(data = filter(individual_data, genus == "Katsuwonus"), aes(x = Total.Length..mm.)) +
-  geom_histogram(binwidth = 1, boundary = 0, fill = "darkslategray2", color = "black", linewidth = 0.3, 
+ggplot(data = filter(individual_data, genus == "Katsuwonus"), 
+       aes(x = Total.Length..mm.)) +
+  geom_histogram(binwidth = 1, 
+                 boundary = 0, 
+                 fill = "darkslategray2", 
+                 color = "black", 
+                 linewidth = 0.3,
                  aes(y = after_stat(count / tapply(count, PANEL, sum)[PANEL] * 100))) +
-  facet_wrap(~ Cruise, scales = "free_y", ncol = 3) +
-  labs(x = "Total Length (mm)", y = "Frequency (%)") +
+  facet_wrap(~ Cruise, 
+             scales = "free_y", 
+             ncol = 3) +
+  labs(x = "Total Length (mm)", 
+       y = "Frequency (%)") +
   theme_minimal()
 #dev.off()
 
 ### Thunnus percent frequency of occurrence per cruise
 #png("thunnus_length_freq_by_cruise.png", units = "in", width = 6, height = 4, res = 1200)
-ggplot(data = filter(individual_data, genus == "Thunnus"), aes(x = Total.Length..mm.)) + 
-  geom_histogram(binwidth = 1, boundary = 0, fill = "goldenrod1", color = "black", linewidth = 0.3,
+ggplot(data = filter(individual_data, genus == "Thunnus"),
+       aes(x = Total.Length..mm.)) + 
+  geom_histogram(binwidth = 1, 
+                 boundary = 0, 
+                 fill = "goldenrod1", 
+                 color = "black", 
+                 linewidth = 0.3,
                  aes(y = after_stat(count / tapply(count, PANEL, sum)[PANEL] * 100))) +
-  facet_wrap(~ Cruise, scales = "free_y", ncol = 3) +
-  labs(x = "Total Length (mm)", y = "Frequency (%)") +
+  facet_wrap(~ Cruise,
+             scales = "free_y", 
+             ncol = 3) +
+  labs(x = "Total Length (mm)", 
+       y = "Frequency (%)") +
   theme_minimal()
 #dev.off()
 
 ### Combine
-freq_data <- individual_data %>%
+length_freq_data <- individual_data %>%
   filter(genus %in% c("Katsuwonus", "Thunnus")) %>%
   filter(!is.na(Total.Length..mm.)) %>%
   mutate(length_bin = floor(Total.Length..mm.)) %>%
@@ -92,11 +108,22 @@ freq_data <- individual_data %>%
   ungroup()
 
 #png("combined_length_freq.png", units = "in", width = 6, height = 4, res = 1200)
-ggplot(freq_data, aes(x = length_bin + 0.5, y = pct, fill = genus)) +
-  geom_col(position = position_dodge2(width = 1, preserve = "single"), color = "black", linewidth = 0.3, width = 1) +
-  facet_wrap(~ Cruise, scales = "free_y", ncol = 3) +
-  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", "Thunnus" = "goldenrod1")) +
-  labs(x = "Total Length (mm)", y = "Frequency (%)", fill = "Genus") +
+ggplot(length_freq_data, 
+       aes(x = length_bin + 0.5, 
+           y = pct, 
+           fill = genus)) +
+  geom_col(position = position_dodge2(width = 1, preserve = "single"), 
+           color = "black", 
+           linewidth = 0.3, 
+           width = 1) +
+  facet_wrap(~ Cruise, 
+             scales = "free_y", 
+             ncol = 3) +
+  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", 
+                               "Thunnus" = "goldenrod1")) +
+  labs(x = "Total Length (mm)", 
+       y = "Frequency (%)", 
+       fill = "Genus") +
   theme_minimal()
 #dev.off()
 
@@ -137,118 +164,129 @@ str(station_data)
 ### Looks good, ecxept let's remove the one sample with a bunch of phytoplankton goop (S261-034-NT)
 station_data <- station_data %>% filter(Jar.. != "S261-034-NT")
 
-###FLAG: Stopped editing formatting here 9/22/26 5pm
-#Make densities in ind./1000m^3
+### Make densities in ind./1000m^3
 station_data$Skipjack.Density.1000m3 <- station_data$Skipjack.Density * 1000
 station_data$Thunnus.Density.1000m3 <- station_data$Thunnus.Density * 1000
 station_data$non.tuna.density.1000m3 <- station_data$non.tuna.density * 1000
 station_data$Zpl.Density..ml.1000m3 <- station_data$Zpl.Density..ml.m3. * 1000
 
-#doing lunar angle instead of % illuminance (note: lunar.phase returns radians hence the transformation below)
+### Doing lunar angle instead of % illuminance (note: lunar.phase returns radians hence the transformation below)
 station_data$lunar_phase_angle <- lunar.phase(station_data$Date, name = FALSE) * 180 / pi
 station_data$day_since_newmoon <- station_data$lunar_phase_angle / 360 * 29.53
 
-#should range 0-360
+### Should range 0-360
 range(station_data$lunar_phase_angle, na.rm = TRUE)
 range(station_data$day_since_fullmoon, na.rm = TRUE)
 
-#Make deployments w/ > 0 larvae -> 1, none = 0
+### Make deployments w/ > 0 larvae -> 1, none = 0
 station_data <- station_data %>%
-mutate(
-  Skipjack_pa = as.integer(Skipjack > 0),
-  Thunnus_pa = as.integer(Thunnus > 0))
+mutate(Skipjack_pa = as.integer(Skipjack > 0), Thunnus_pa = as.integer(Thunnus > 0))
 
-#Make time 0-24
+### Make time 0-24
 station_data$hour <- floor(station_data$Time / 100) + (station_data$Time %% 100) / 60
 station_data$hour[station_data$hour == 24] <- 0
 
-#See number of NAs (this is from Caroline):
+### See number of NAs (this is from Caroline):
 na_table_tidyverse <- station_data %>%
-  #Count the NAs for every column
   dplyr::summarise(across(everything(), ~sum(is.na(.)))) %>%
-  #Convert the row of counts into a long-format table
-  pivot_longer(everything(), names_to = "Column Name", values_to = "NA Count")
+  pivot_longer(everything(), 
+               names_to = "Column Name", 
+               values_to = "NA Count")
 
 print(na_table_tidyverse)
 ```
 
-###Mean Density of larval genera across cruises
+### Mean Density of larval genera across cruises
 ```{r}
 density_summary <- station_data %>%
   filter(!is.na(Skipjack.Density) | !is.na(Thunnus.Density)) %>%
-  pivot_longer(
-    cols = c(Skipjack.Density, Thunnus.Density),
-    names_to = "genus",
-    values_to = "density_m3") %>%
-  mutate(genus = case_when(genus == "Skipjack.Density" ~ "Katsuwonus", genus == "Thunnus.Density"  ~ "Thunnus", TRUE ~ NA_character_),
-    genus = factor(genus, levels = c("Katsuwonus", "Thunnus")),
-    density_per_1000m3 = density_m3 * 1000) %>%
+  pivot_longer(cols = c(Skipjack.Density, Thunnus.Density), 
+               names_to = "genus", 
+               values_to = "density_m3") %>%
+  mutate(genus = case_when(genus == "Skipjack.Density" ~ "Katsuwonus", 
+                           genus == "Thunnus.Density"  ~ "Thunnus", 
+                           TRUE ~ NA_character_),
+         genus = factor(genus, levels = c("Katsuwonus", "Thunnus")),
+         density_per_1000m3 = density_m3 * 1000) %>%
   filter(!is.na(genus)) %>%
   group_by(Cruise, genus) %>%
-  summarise(
-    mean_density = mean(density_per_1000m3, na.rm = TRUE),
-    sd_density = sd(density_per_1000m3, na.rm = TRUE),
-    n_stations = n(),
-    n_stations_present = sum(density_per_1000m3 > 0, na.rm = TRUE),
-    freq_occurrence = (n_stations_present / n_stations) * 100,
-    se_density = sd_density / sqrt(n_stations),
-    min_density = min(density_per_1000m3, na.rm = TRUE),
-    max_density = max(density_per_1000m3, na.rm = TRUE),
-    .groups = "drop") %>%
+  summarise(mean_density = mean(density_per_1000m3, na.rm = TRUE),
+            sd_density = sd(density_per_1000m3, na.rm = TRUE),
+            n_stations = n(),
+            n_stations_present = sum(density_per_1000m3 > 0, na.rm = TRUE),
+            freq_occurrence = (n_stations_present / n_stations) * 100,
+            se_density = sd_density / sqrt(n_stations),
+            min_density = min(density_per_1000m3, na.rm = TRUE),
+            max_density = max(density_per_1000m3, na.rm = TRUE),
+            .groups = "drop") %>%
   mutate(Cruise = factor(Cruise))
 
 #png("tuna_density_by_cruise.png", units = "in", width = 6, height = 5, res = 1200)
-ggplot(density_summary,aes(x = Cruise, y = mean_density, fill = genus)) +
-  geom_col(position = position_dodge(width = 0.75), width = 0.70, color = "black", linewidth = 0.4) +
-  geom_errorbar(aes(ymin = mean_density - se_density, ymax = mean_density + se_density),
-                position = position_dodge(width = 0.75),
-                width = 0.45,
-                linewidth = 0.4) +
-  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", "Thunnus" = "goldenrod1")) +
-  labs(
-    x = "Cruise",
-    y = "Mean density (larvae/1,000 m³)",
-    fill = "Genus") +
+ggplot(density_summary,
+       aes(x = Cruise, 
+           y = mean_density, 
+           fill = genus)) +
+  geom_col(position = position_dodge(width = 0.75), 
+           width = 0.70, 
+           color = "black", 
+           linewidth = 0.4) +
+  geom_errorbar(aes(ymin = mean_density - se_density, 
+                    ymax = mean_density + se_density),
+                    position = position_dodge(width = 0.75), 
+                    width = 0.45, 
+                    linewidth = 0.4) +
+  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", 
+                               "Thunnus" = "goldenrod1")) +
+  labs(x = "Cruise", 
+       y = "Mean density (larvae/1,000 m³)", 
+       fill = "Genus") +
   theme_minimal(base_size = 14) +
   theme_minimal()
 #dev.off()
 
-#Non-zero stations only
+### Non-zero stations only
 density_summary_nonzero <- station_data %>%
   filter(!is.na(Skipjack.Density) | !is.na(Thunnus.Density)) %>%
-  pivot_longer(
-    cols = c(Skipjack.Density, Thunnus.Density),
-    names_to = "genus",
-    values_to = "density_m3") %>%
-  mutate(genus = case_when(genus == "Skipjack.Density" ~ "Katsuwonus", genus == "Thunnus.Density"  ~ "Thunnus", TRUE ~ NA_character_),
-    genus = factor(genus, levels = c("Katsuwonus", "Thunnus")),
-    density_per_1000m3 = density_m3 * 1000) %>%
+  pivot_longer(cols = c(Skipjack.Density, Thunnus.Density), 
+               names_to = "genus", 
+               values_to = "density_m3") %>%
+  mutate(genus = case_when(genus == "Skipjack.Density" ~ "Katsuwonus", 
+                           genus == "Thunnus.Density"  ~ "Thunnus", 
+                           TRUE ~ NA_character_),
+         genus = factor(genus, levels = c("Katsuwonus", "Thunnus")),
+         density_per_1000m3 = density_m3 * 1000) %>%
   filter(!is.na(genus), density_per_1000m3 > 0) %>%
   group_by(Cruise, genus) %>%
-  summarise(
-    mean_density = mean(density_per_1000m3, na.rm = TRUE),
-    sd_density = sd(density_per_1000m3, na.rm = TRUE),
-    n_stations = n(),
-    se_density = sd_density / sqrt(n_stations),
-    min_density = min(density_per_1000m3, na.rm = TRUE),
-    median_density = median(density_per_1000m3, na.rm = TRUE),
-    max_density = max(density_per_1000m3, na.rm = TRUE),
-    .groups = "drop") %>%
+  summarise(mean_density = mean(density_per_1000m3, na.rm = TRUE), 
+            sd_density = sd(density_per_1000m3, na.rm = TRUE), 
+            n_stations = n(),
+            se_density = sd_density / sqrt(n_stations),
+            min_density = min(density_per_1000m3, na.rm = TRUE),
+            median_density = median(density_per_1000m3, na.rm = TRUE),
+            max_density = max(density_per_1000m3, na.rm = TRUE),
+            .groups = "drop") %>%
   mutate(Cruise = factor(Cruise))
 
-#density_summary_nonzero$
+### Nonzero density by cruise
 #png("nonzero_tuna_density_by_cruise.png", units = "in", width = 6, height = 5, res = 1200)
-ggplot(density_summary_nonzero,aes(x = Cruise, y = mean_density, fill = genus)) +
-  geom_col(position = position_dodge(width = 0.75), width = 0.70, color = "black", linewidth = 0.4) +
-  geom_errorbar(aes(ymin = mean_density - se_density, ymax = mean_density + se_density),
-                position = position_dodge(width = 0.75),
-                width = 0.45,
-                linewidth = 0.4) +
-  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", "Thunnus" = "goldenrod1")) +
-  labs(
-    x = "Cruise",
-    y = "Mean density (larvae/1,000 m³)",
-    fill = "Genus") +
+ggplot(density_summary_nonzero,
+       aes(x = Cruise, 
+           y = mean_density, 
+           fill = genus)) +
+  geom_col(position = position_dodge(width = 0.75), 
+           width = 0.70, 
+           color = "black", 
+           linewidth = 0.4) +
+  geom_errorbar(aes(ymin = mean_density - se_density, 
+                    ymax = mean_density + se_density),
+                    position = position_dodge(width = 0.75),
+                    width = 0.45,
+                    linewidth = 0.4) +
+  scale_fill_manual(values = c("Katsuwonus" = "darkslategray2", 
+                               "Thunnus" = "goldenrod1")) +
+  labs(x = "Cruise",
+       y = "Mean density (larvae/1,000 m³)",
+       fill = "Genus") +
   theme_minimal(base_size = 14) +
   theme_minimal()
 #dev.off()
@@ -256,11 +294,14 @@ ggplot(density_summary_nonzero,aes(x = Cruise, y = mean_density, fill = genus)) 
 
 ### Boxplot Version
 ```{r}
-
-
+### Making the data long format
 density_long <- station_data %>%
-  pivot_longer(cols = c(Skipjack.Density, Thunnus.Density), names_to = "genus", values_to = "density_m3") %>%
-  mutate(genus = case_when(genus == "Skipjack.Density" ~ "Katsuwonus", genus == "Thunnus.Density"  ~ "Thunnus", TRUE ~ NA_character_),
+  pivot_longer(cols = c(Skipjack.Density, Thunnus.Density), 
+               names_to = "genus", 
+               values_to = "density_m3") %>%
+  mutate(genus = case_when(genus == "Skipjack.Density" ~ "Katsuwonus", 
+                           genus == "Thunnus.Density"  ~ "Thunnus", 
+                           TRUE ~ NA_character_),
          genus = factor(genus, levels = c("Katsuwonus", "Thunnus")), 
          Cruise = factor(Cruise),
          density_per_1000m3 = density_m3 * 1000) %>%
@@ -273,7 +314,7 @@ nonzero_means <- density_long_nonzero %>%
   group_by(Cruise, genus) %>%
   summarise(mean_density = mean(density_per_1000m3, na.rm = TRUE), .groups = "drop")
 
-#FLAG: fix formatting of this and make sure the whole doc has the same consistent organization! 
+#FLAG: stopped here 
 
 #png("nonzero_density_by_cruise_boxplot_final.png", units = "in", width = 6, height = 5, res = 1200)
 ggplot(density_long_nonzero, aes(x = Cruise, y = density_per_1000m3, fill = genus)) +
